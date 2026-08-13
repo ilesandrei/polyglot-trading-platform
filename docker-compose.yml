@@ -1,0 +1,151 @@
+version: "3.9"
+
+# ═══════════════════════════════════════════════════════════════════
+#  Polyglot Trading Platform — Docker Compose
+#
+#  Services:
+#    - postgres          : Trade/portfolio persistence
+#    - zookeeper         : Required by Kafka
+#    - kafka             : Async message bus (optional signaling path)
+#    - cpp-engine        : C++ gRPC matching engine   (Phase 2)
+#    - java-orchestrator : Java Spring Boot hub        (Phase 3)
+#    - python-strategy   : Python quant signal engine  (Phase 4)
+# ═══════════════════════════════════════════════════════════════════
+
+networks:
+  trading-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  kafka-data:
+
+services:
+
+  # ─── PostgreSQL ──────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: trading-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trading_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trading_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-trading_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trading_user} -d ${POSTGRES_DB:-trading_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trading-net
+
+  # ─── Zookeeper (required by Kafka) ───────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: trading-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "${ZOOKEEPER_PORT:-2181}:2181"
+    networks:
+      - trading-net
+
+  # ─── Kafka ───────────────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: trading-kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - trading-net
+
+  # ─── C++ Execution Engine ────────────────────────────────────────
+  # Placeholder — Dockerfile will be added in Phase 2
+  cpp-engine:
+    build:
+      context: ./engine
+      dockerfile: Dockerfile
+    container_name: trading-cpp-engine
+    restart: unless-stopped
+    ports:
+      - "${CPP_ENGINE_PORT:-50051}:50051"
+    environment:
+      GRPC_PORT: 50051
+    networks:
+      - trading-net
+    profiles:
+      - full   # Only starts with: docker compose --profile full up
+
+  # ─── Java Orchestrator ───────────────────────────────────────────
+  # Placeholder — Dockerfile will be added in Phase 3
+  java-orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    container_name: trading-java-orchestrator
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "${JAVA_ORCHESTRATOR_PORT:-8080}:8080"
+      - "${JAVA_GRPC_PORT:-50052}:50052"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-trading_db}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-trading_user}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-trading_pass}
+      CPP_ENGINE_HOST: cpp-engine
+      CPP_ENGINE_PORT: 50051
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks:
+      - trading-net
+    profiles:
+      - full
+
+  # ─── Python Strategy Engine ──────────────────────────────────────
+  # Placeholder — Dockerfile will be added in Phase 4
+  python-strategy:
+    build:
+      context: ./strategy
+      dockerfile: Dockerfile
+    container_name: trading-python-strategy
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    ports:
+      - "${PYTHON_STRATEGY_PORT:-50053}:50053"
+    environment:
+      ORCHESTRATOR_HOST: java-orchestrator
+      ORCHESTRATOR_GRPC_PORT: 50052
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks:
+      - trading-net
+    profiles:
+      - full
