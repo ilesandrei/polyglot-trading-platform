@@ -1,0 +1,72 @@
+# ─── C++ Build Artifacts ───────────────────────────────────────────
+build/
+*.o
+*.obj
+*.exe
+*.out
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# ─── Java / Maven / Gradle ────────────────────────────────────────
+target/
+*.class
+*.jar
+*.war
+*.ear
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+.mvn/
+*.iml
+
+# ─── Python ────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+.eggs/
+.venv/
+venv/
+env/
+*.pyo
+
+# ─── Protobuf Generated Code ──────────────────────────────────────
+# (generated files — do not commit)
+proto/generated/
+**/*_pb2.py
+**/*_pb2_grpc.py
+**/*.pb.cc
+**/*.pb.h
+**/*OuterClass.java
+**/*Grpc.java
+
+# ─── Docker ────────────────────────────────────────────────────────
+.docker/
+
+# ─── IDE / Editor ──────────────────────────────────────────────────
+.idea/
+.vscode/
+*.suo
+*.user
+*.sln.docstates
+.DS_Store
+Thumbs.db
+
+# ─── Environment / Secrets ─────────────────────────────────────────
+.env
+.env.*
+secrets/
+*.pem
+*.key
+
+# ─── Logs ──────────────────────────────────────────────────────────
+*.log
+logs/
