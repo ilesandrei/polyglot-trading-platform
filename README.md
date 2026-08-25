@@ -1,4 +1,4 @@
-# Algorithmic Trading Platform — Polyglot
+# Algorithmic Trading Platform
 
 A high-performance, polyglot algorithmic trading simulator built with **C++**, **Java**, and **Python** communicating over **gRPC + Protobuf**.
 

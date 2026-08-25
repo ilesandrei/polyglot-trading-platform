@@ -23,13 +23,13 @@ void OrderBook::add_order(Order order) {
     if(is_bid){
         bids_[price].push_back(order);
         auto iterator = std::prev(bids_[price].end());
-        order_index_[id] = OrderLocation(is_bid, price, iterator);
+        order_index_[id] = { is_bid, price, iterator };
     }
     
     else{
         asks_[price].push_back(order);
         auto iterator = std::prev(asks_[price].end());
-        order_index_[id] = OrderLocation(is_bid, price, iterator);
+        order_index_[id] = { is_bid, price, iterator };
     }
 
 }
@@ -51,7 +51,7 @@ bool OrderBook::cancel_order(const std::string& order_id) {
     }
 
     // Extract the location data
-    const OrderLocation& loc = index_it->seccond;
+    const OrderLocation& loc = index_it->second;
     const bool is_bid = loc.is_bid;
     const double price = loc.price;
     auto list_iterator = loc.it;
@@ -59,9 +59,9 @@ bool OrderBook::cancel_order(const std::string& order_id) {
     if(is_bid){
         bids_[price].erase(list_iterator);
         
-        if(bids_[price].empty())[
+        if(bids_[price].empty()){
             bids_.erase(price);
-        ]
+        }
     }
     else{
         asks_[price].erase(list_iterator);
@@ -93,8 +93,6 @@ std::optional<double> OrderBook::best_ask() const {
     // TODO STEP 2c:
     // asks_ is sorted ascending, so begin() is the lowest price
     // Return std::nullopt if asks_ is empty
-    return std::nullopt;
-
     if(asks_.empty()){ return std::nullopt; }
 
     return asks_.begin()->first;
