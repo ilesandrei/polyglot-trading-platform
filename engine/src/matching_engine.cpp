@@ -40,8 +40,13 @@ Order MatchingEngine::process_order(Order order) {
     
     match(order, book);
 
-    if(order.remaining_qty() > 0 && order.type == Type::LIMIT){
-        order.status = Status::PENDING;
+    if (order.remaining_qty() > 0 && order.type == Type::LIMIT) {
+        // Only set PENDING if the order was never touched by matching.
+        // If it was partially filled, preserve PARTIALLY_FILLED status
+        // so the caller knows some quantity already executed.
+        if (order.filled_qty == 0) {
+            order.status = Status::PENDING;
+        }
         book.add_order(order);
     } else if (order.remaining_qty() > 0 && order.type == Type::MARKET) {
         order.status = Status::CANCELLED;

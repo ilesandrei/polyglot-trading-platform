@@ -26,10 +26,11 @@ COPY proto/ proto/
 # Copy engine source + build config
 COPY engine/ engine/
 
-# Build
+# Build server + tests, then run tests (failing tests = failed image build)
 RUN cmake -S engine -B engine/build \
         -DCMAKE_BUILD_TYPE=Release \
-    && cmake --build engine/build --parallel $(nproc)
+    && cmake --build engine/build --parallel $(nproc) \
+    && cd engine/build && ctest --output-on-failure
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────
 FROM ubuntu:24.04 AS runtime

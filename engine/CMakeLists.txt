@@ -18,14 +18,13 @@ set(PROTO_FILES
     "${PROTO_DIR}/services.proto"
 )
 
-# All generated files go into a dedicated directory in the build tree
 set(GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY ${GENERATED_DIR})
 
 set(ALL_GENERATED_SRCS)
 
 foreach(PROTO_FILE ${PROTO_FILES})
-    get_filename_component(PROTO_NAME ${PROTO_FILE} NAME_WE)  # e.g. "trading"
+    get_filename_component(PROTO_NAME ${PROTO_FILE} NAME_WE)
 
     set(PB_CC   "${GENERATED_DIR}/${PROTO_NAME}.pb.cc")
     set(PB_H    "${GENERATED_DIR}/${PROTO_NAME}.pb.h")
@@ -48,24 +47,56 @@ foreach(PROTO_FILE ${PROTO_FILES})
     list(APPEND ALL_GENERATED_SRCS ${PB_CC} ${GRPC_CC})
 endforeach()
 
-# ─── Engine Executable ────────────────────────────────────────────
-add_executable(trading_engine
+# ─── Core engine library (shared by server + tests) ───────────────
+# grpc_server.cpp is NOT included here — tests don't need gRPC.
+add_library(engine_core STATIC
     src/order_book.cpp
     src/matching_engine.cpp
-    src/grpc_server.cpp
-    ${ALL_GENERATED_SRCS}        # generated pb.cc + grpc.pb.cc
 )
+target_include_directories(engine_core PUBLIC src)
+target_link_libraries(engine_core PUBLIC Threads::Threads)
 
+# ─── gRPC Server Executable ───────────────────────────────────────
+add_executable(trading_engine
+    src/grpc_server.cpp
+    ${ALL_GENERATED_SRCS}
+)
 target_include_directories(trading_engine
     PRIVATE
-    src                          # order.hpp, order_book.hpp, matching_engine.hpp
-    ${GENERATED_DIR}             # generated .pb.h and .grpc.pb.h
+    src
+    ${GENERATED_DIR}
     ${Protobuf_INCLUDE_DIRS}
 )
-
 target_link_libraries(trading_engine
     PRIVATE
-    Threads::Threads
+    engine_core
     protobuf::libprotobuf
-    PkgConfig::GRPC              # links grpc++ from apt
+    PkgConfig::GRPC
 )
+
+# ─── Google Test ──────────────────────────────────────────────────
+include(FetchContent)
+FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/v1.14.0.zip
+    DOWNLOAD_EXTRACT_TIMESTAMP ON
+)
+# Prevent gtest from overriding our compiler/linker settings on Windows
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+# ─── Test Executable ──────────────────────────────────────────────
+enable_testing()
+
+add_executable(engine_tests
+    tests/test_order_book.cpp
+    tests/test_matching_engine.cpp
+)
+target_link_libraries(engine_tests
+    PRIVATE
+    engine_core
+    GTest::gtest_main   # provides main() + test runner
+)
+
+include(GoogleTest)
+gtest_discover_tests(engine_tests)   # registers each TEST() with ctest
