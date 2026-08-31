@@ -60,6 +60,10 @@ public:
     // Find the book for symbol and call book.cancel_order(order_id)
     bool cancel_order(const std::string& symbol, const std::string& order_id);
 
+    // Cancel by order_id only — scans all books (used by gRPC CancelOrder
+    // since the proto doesn't carry a symbol field)
+    bool cancel_any(const std::string& order_id);
+
 private:
     // TODO STEP 3c: Implement match(Order& incoming, OrderBook& book)
     // This is the core matching loop. It should:

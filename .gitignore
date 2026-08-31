@@ -9,6 +9,7 @@ build/
 *.dll
 *.so
 *.dylib
+*.pdb
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
@@ -66,7 +67,6 @@ Thumbs.db
 secrets/
 *.pem
 *.key
-*.md
 
 # ─── Logs ──────────────────────────────────────────────────────────
 *.log

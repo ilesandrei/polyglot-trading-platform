@@ -88,8 +88,8 @@ services:
   # Placeholder — Dockerfile will be added in Phase 2
   cpp-engine:
     build:
-      context: ./engine
-      dockerfile: Dockerfile
+      context: .          # repo root — Dockerfile needs both engine/ and proto/
+      dockerfile: engine/Dockerfile
     container_name: trading-cpp-engine
     restart: unless-stopped
     ports:

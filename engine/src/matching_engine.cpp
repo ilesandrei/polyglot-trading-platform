@@ -64,6 +64,14 @@ bool MatchingEngine::cancel_order(const std::string& symbol,
     return book.cancel_order(order_id);
 }
 
+// ─── cancel_any ───────────────────────────────────────────────
+bool MatchingEngine::cancel_any(const std::string& order_id) {
+    for (auto& [symbol, book] : books_) {
+        if (book.cancel_order(order_id)) { return true; }
+    }
+    return false;
+}
+
 // ─── can_match ────────────────────────────────────────────────
 bool MatchingEngine::can_match(const Order& incoming,
                                 double resting_price) const {
@@ -153,5 +161,7 @@ void MatchingEngine::match(Order& incoming, OrderBook& book) {
     } else if (incoming.filled_qty > 0) {
         incoming.status = Status::PARTIALLY_FILLED;
     }
+
+} // match()
 
 } // namespace engine
