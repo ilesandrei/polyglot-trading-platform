@@ -1,0 +1,54 @@
+# ═══════════════════════════════════════════════════════════════
+#  orchestrator/src/main/resources/application.yml
+#
+#  Spring Boot configuration for the Java Orchestrator service.
+#  Values are read from environment variables injected by Docker
+#  Compose (or the .env file locally).
+# ═══════════════════════════════════════════════════════════════
+
+spring:
+  application:
+    name: trading-orchestrator
+
+  # ── PostgreSQL via Spring Data JPA ─────────────────────────────
+  datasource:
+    # docker-compose injects SPRING_DATASOURCE_URL
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/trading_db}
+    username: ${SPRING_DATASOURCE_USERNAME:trading_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:trading_pass}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      # 'validate' — Hibernate checks the schema matches entities but never changes it.
+      # The DB is already created by infra/db/init.sql.
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+# ── REST API port ───────────────────────────────────────────────
+server:
+  port: 8080
+
+# ── gRPC Server (OrchestratorService — serves Python & REST) ───
+#    Provided by net.devh:grpc-server-spring-boot-starter
+grpc:
+  server:
+    port: 50052
+
+  # ── gRPC Client (calls C++ ExecutionService on port 50051) ────
+  client:
+    cpp-engine:
+      # Docker service name resolves to the cpp-engine container
+      address: ${CPP_ENGINE_HOST:localhost}:${CPP_ENGINE_PORT:50051}
+      negotiation-type: plaintext   # no TLS in dev
+
+# ── Logging ────────────────────────────────────────────────────
+logging:
+  level:
+    root: INFO
+    com.trading: DEBUG
+    io.grpc: WARN

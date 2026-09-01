@@ -1,0 +1,96 @@
+// ═══════════════════════════════════════════════════════════════
+//  orchestrator/build.gradle — Phase 3: Java Orchestrator
+//
+//  Dependencies:
+//    - Spring Boot 3 (Web, Data JPA, WebSocket)
+//    - PostgreSQL JDBC driver
+//    - gRPC client (to call C++ engine on port 50051)
+//    - gRPC server (to serve OrchestratorService on port 50052)
+//    - Protobuf plugin (generates Java stubs from proto/ files)
+// ═══════════════════════════════════════════════════════════════
+
+plugins {
+    id 'java'
+    id 'org.springframework.boot'    version '3.3.0'
+    id 'io.spring.dependency-management' version '1.1.5'
+    id 'com.google.protobuf'         version '0.9.4'
+}
+
+group   = 'com.trading'
+version = '0.1.0-SNAPSHOT'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    grpcVersion      = '1.64.0'
+    protobufVersion  = '3.25.3'
+    grpcSpringVersion = '3.1.0.RELEASE'
+}
+
+dependencies {
+    // ── Spring Boot ──────────────────────────────────────────────
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // ── PostgreSQL ───────────────────────────────────────────────
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // ── gRPC (server + client) ───────────────────────────────────
+    // grpc-server-spring-boot-starter: auto-wires a gRPC server on GRPC_PORT
+    implementation "net.devh:grpc-server-spring-boot-starter:${grpcSpringVersion}"
+    // grpc-client-spring-boot-starter: injects a managed channel to cpp-engine
+    implementation "net.devh:grpc-client-spring-boot-starter:${grpcSpringVersion}"
+
+    // ── gRPC core libs ───────────────────────────────────────────
+    implementation "io.grpc:grpc-stub:${grpcVersion}"
+    implementation "io.grpc:grpc-protobuf:${grpcVersion}"
+    implementation "io.grpc:grpc-netty-shaded:${grpcVersion}"
+    implementation "com.google.protobuf:protobuf-java:${protobufVersion}"
+    compileOnly    'jakarta.annotation:jakarta.annotation-api:2.1.1'
+    // javax.annotation-api is needed because the gRPC code generator (@protoc-gen-grpc-java)
+    // annotates generated stubs with @javax.annotation.Generated, which was removed from
+    // the JDK in Java 9+. This dependency restores that missing class at compile time.
+    compileOnly    'javax.annotation:javax.annotation-api:1.3.2'
+
+    // ── Utilities ────────────────────────────────────────────────
+    compileOnly    'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // ── Tests ────────────────────────────────────────────────────
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation "io.grpc:grpc-testing:${grpcVersion}"
+}
+
+// ── Protobuf code generation ─────────────────────────────────────
+// Reads proto/ files from the repo root and generates Java stubs
+// into build/generated/source/proto/main/
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:${protobufVersion}"
+    }
+    plugins {
+        grpc {
+            artifact = "io.grpc:protoc-gen-grpc-java:${grpcVersion}"
+        }
+    }
+    generateProtoTasks {
+        all()*.plugins { grpc {} }
+    }
+}
+
+// Point protobuf plugin at the shared proto/ directory (repo root)
+sourceSets {
+    main {
+        proto {
+            srcDir '../proto'
+        }
+    }
+}
