@@ -32,7 +32,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trading_pass}
       POSTGRES_DB: ${POSTGRES_DB:-trading_db}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -105,8 +105,8 @@ services:
   # Placeholder — Dockerfile will be added in Phase 3
   java-orchestrator:
     build:
-      context: ./orchestrator
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: orchestrator/Dockerfile
     container_name: trading-java-orchestrator
     restart: unless-stopped
     depends_on:

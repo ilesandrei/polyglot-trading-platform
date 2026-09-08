@@ -56,13 +56,9 @@ public class PortfolioService {
         log.info("[PORTFOLIO] Applying trade {} — {} {} @ {}",
             trade.getId(), trade.getSymbol(), trade.getQuantity(), trade.getPrice());
 
-        // TODO: call applyBuy() and applySell() here.
-        //       If either throws, the @Transactional annotation rolls back both.
-        //
-        //   applyBuy(trade, buyerOrder.getUserId());
-        //   applySell(trade, sellerOrder.getUserId());
-
-        throw new UnsupportedOperationException("TODO: implement applyTrade");
+        // If either throws, the @Transactional annotation rolls back both.
+        applyBuy(trade, buyerOrder.getUserId());
+        applySell(trade, sellerOrder.getUserId());
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -70,16 +66,49 @@ public class PortfolioService {
     // ─────────────────────────────────────────────────────────────────────
 
     private void applyBuy(Trade trade, UUID buyerId) {
-        // TODO:
-        //  1. Load the buyer's portfolio: portfolioRepository.findByUserId(buyerId)
-        //  2. Deduct cash: portfolio.setCash( cash - quantity * price )
-        //  3. Load (or create) the buyer's position for trade.getSymbol()
-        //  4. Update position quantity: pos.qty += trade.quantity
-        //  5. Recalculate average cost:
-        //       new_avg = (old_qty * old_avg + trade.qty * trade.price) / new_qty
-        //  6. Save portfolio and position (portfolioRepository.save / positionRepository.save)
+        // 1. Load the buyer's portfolio
+        Portfolio portfolio = portfolioRepository.findByUserId(buyerId)
+            .orElseThrow(() -> new IllegalStateException("Portfolio not found for buyer: " + buyerId));
 
-        throw new UnsupportedOperationException("TODO: implement applyBuy");
+        // 2. Deduct cash = quantity * price
+        BigDecimal totalCost = trade.getQuantity().multiply(trade.getPrice());
+        portfolio.setCash(portfolio.getCash().subtract(totalCost));
+        portfolio.setUpdatedAt(OffsetDateTime.now());
+        
+        // 3. Load or create the position for this symbol
+        Position position = positionRepository
+            .findByPortfolioIdAndSymbol(portfolio.getId(), trade.getSymbol())
+            .orElseGet(() -> {
+                Position newPos = new Position();
+                newPos.setPortfolioId(portfolio.getId());
+                newPos.setSymbol(trade.getSymbol());
+                newPos.setQuantity(BigDecimal.ZERO);
+                newPos.setAverageCost(BigDecimal.ZERO);
+                return newPos;
+            });
+        
+        // 4 & 5. Update quantity and recalculate weighted average cost
+        BigDecimal oldQty = position.getQuantity();
+        BigDecimal oldAvg = position.getAverageCost();
+        BigDecimal fillQty = trade.getQuantity();
+        BigDecimal fillPrice = trade.getPrice();
+        BigDecimal newQty = oldQty.add(fillQty);
+        
+        if (newQty.compareTo(BigDecimal.ZERO) > 0) {
+            // new_avg = (old_qty * old_avg + fill_qty * fill_price) / new_qty
+            BigDecimal oldCostBasis = oldQty.multiply(oldAvg);
+            BigDecimal fillCostBasis = fillQty.multiply(fillPrice);
+            BigDecimal totalCostBasis = oldCostBasis.add(fillCostBasis);
+            BigDecimal newAvg = totalCostBasis.divide(newQty, 8, java.math.RoundingMode.HALF_UP);
+            position.setAverageCost(newAvg);
+        }
+        position.setQuantity(newQty);
+        position.setUpdatedAt(OffsetDateTime.now());
+        // 6. Save both entities
+        portfolioRepository.save(portfolio);
+        positionRepository.save(position);
+        log.info("[PORTFOLIO] Buyer {} updated: cash={}, {} pos={} @ avg={}",
+            buyerId, portfolio.getCash(), trade.getSymbol(), position.getQuantity(), position.getAverageCost());
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -87,14 +116,42 @@ public class PortfolioService {
     // ─────────────────────────────────────────────────────────────────────
 
     private void applySell(Trade trade, UUID sellerId) {
-        // TODO:
-        //  1. Load the seller's portfolio
-        //  2. Add cash: portfolio.setCash( cash + quantity * price )
-        //  3. Load the seller's position for trade.getSymbol()
-        //  4. Deduct quantity: pos.qty -= trade.quantity
-        //     (if quantity reaches 0, you may delete the position row or leave it at 0)
-        //  5. Save portfolio and position
-
-        throw new UnsupportedOperationException("TODO: implement applySell");
+        // 1. Load the seller's portfolio
+        Portfolio portfolio = portfolioRepository.findByUserId(sellerId)
+            .orElseThrow(() -> new IllegalStateException("Portfolio not found for seller: " + sellerId));
+        
+            // 2. Add cash proceeds = quantity * price
+        BigDecimal proceeds = trade.getQuantity().multiply(trade.getPrice());
+        portfolio.setCash(portfolio.getCash().add(proceeds));
+        portfolio.setUpdatedAt(OffsetDateTime.now());
+        
+        // 3. Load the seller's position for this symbol
+        Position position = positionRepository
+            .findByPortfolioIdAndSymbol(portfolio.getId(), trade.getSymbol())
+            .orElseThrow(() -> new IllegalStateException(
+                "No position found for seller " + sellerId + " in " + trade.getSymbol()));
+        
+                // 4. Deduct quantity
+        BigDecimal oldQty = position.getQuantity();
+        BigDecimal sellQty = trade.getQuantity();
+        if (oldQty.compareTo(sellQty) < 0) {
+            throw new IllegalStateException(String.format(
+                "Oversell detected for seller %s in %s: holding %s, selling %s",
+                sellerId, trade.getSymbol(), oldQty, sellQty));
+        }
+        BigDecimal newQty = oldQty.subtract(sellQty);
+        position.setQuantity(newQty);
+        
+        // If fully sold out, reset average cost to 0
+        if (newQty.compareTo(BigDecimal.ZERO) == 0) {
+            position.setAverageCost(BigDecimal.ZERO);
+        }
+        position.setUpdatedAt(OffsetDateTime.now());
+        
+        // 5. Save both entities
+        portfolioRepository.save(portfolio);
+        positionRepository.save(position);
+        log.info("[PORTFOLIO] Seller {} updated: cash={}, {} remaining_pos={}",
+            sellerId, portfolio.getCash(), trade.getSymbol(), position.getQuantity());
     }
 }

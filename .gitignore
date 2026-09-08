@@ -1,5 +1,7 @@
 # ─── C++ Build Artifacts ───────────────────────────────────────────
 build/
+bin/
+out/
 *.o
 *.obj
 *.exe
@@ -14,6 +16,8 @@ CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 Makefile
+cmake-build-*/
+.cmake/
 
 # ─── Java / Maven / Gradle ────────────────────────────────────────
 target/
@@ -24,8 +28,13 @@ target/
 .gradle/
 gradle-app.setting
 !gradle-wrapper.jar
+!**/gradle-wrapper.jar
 .mvn/
 *.iml
+.project
+.classpath
+.settings/
+.factorypath
 
 # ─── Python ────────────────────────────────────────────────────────
 __pycache__/
@@ -38,6 +47,9 @@ dist/
 venv/
 env/
 *.pyo
+.pytest_cache/
+.coverage
+htmlcov/
 
 # ─── Protobuf Generated Code ──────────────────────────────────────
 # (generated files — do not commit)
@@ -60,10 +72,13 @@ proto/generated/
 *.sln.docstates
 .DS_Store
 Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
 
 # ─── Environment / Secrets ─────────────────────────────────────────
 .env
 .env.*
+!.env.example
 secrets/
 *.pem
 *.key
@@ -72,3 +87,4 @@ secrets/
 *.log
 logs/
 docker_commands.txt
+

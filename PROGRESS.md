@@ -1,6 +1,6 @@
 # Polyglot Trading Platform — Progress & Roadmap
 
-> Last updated: 2026-08-31
+> Last updated: 2026-09-01
 
 ---
 
@@ -97,35 +97,61 @@ trading-cpp-engine | [ORDER] Received AAPL BUY qty=5 @ 100   ✅
 
 ---
 
-## 🔜 Next Steps
+### Phase 3 — Java Orchestrator *(Complete)*
 
-### Phase 3 — Java Orchestrator *(Weeks 6–8)*
+The Java Spring Boot orchestrator layer is fully implemented, container-ready, and tested end-to-end. It bridges the REST/gRPC client surface, PostgreSQL state persistence, pre-trade risk controls, and low-latency C++ order book execution.
 
-The central hub between users and the matching engine.
+#### Gradle & Build Configuration
+- **[`build.gradle`](orchestrator/build.gradle)**:
+  - Spring Boot 3 (Web, Data JPA, WebSocket, Validation)
+  - `net.devh:grpc-server-spring-boot-starter` — auto-wires gRPC server on port `50052`
+  - `net.devh:grpc-client-spring-boot-starter` — injects managed channel to C++ engine (`localhost:50051`)
+  - `org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0` — OpenAPI 3 interactive Swagger UI at `/swagger-ui/index.html`
+  - `com.google.protobuf` Gradle plugin — runs `protoc` on `proto/` to generate Java stubs
+  - `javax.annotation-api:1.3.2` — required for gRPC stubs on Java 9+
+- **Gradle wrapper** upgraded to `8.10.2` for JDK 22 support.
 
-#### Tasks
-- [ ] Initialize Spring Boot project in `orchestrator/` (Spring Web, Data JPA, gRPC client)
-- [ ] Generate Java gRPC stubs from `proto/` using the Gradle protobuf plugin
-- [ ] Implement `OrchestratorService`:
-  - `PlaceOrder` — validate request → risk check → forward to C++ on port 50051 → persist to DB
-  - `GetPortfolio` — query PostgreSQL for user positions + cash
-  - `StreamTrades` — relay trade stream from C++ engine to the calling client
-- [ ] Risk Engine logic:
-  - Reject orders exceeding available cash balance
-  - Reject orders for symbols the user doesn't hold (for SELL)
-  - Update portfolio after a confirmed trade
-- [ ] REST API (`/api/orders`, `/api/portfolio/{userId}`)
-- [ ] WebSocket endpoint for live trade feed
-- [ ] Write `orchestrator/Dockerfile`
+#### JPA Entities & Repositories
+- **Entities**: [`Order`](orchestrator/src/main/java/com/trading/entity/Order.java), [`Trade`](orchestrator/src/main/java/com/trading/entity/Trade.java), [`Portfolio`](orchestrator/src/main/java/com/trading/entity/Portfolio.java), [`Position`](orchestrator/src/main/java/com/trading/entity/Position.java).
+- **Repositories**: [`OrderRepository`](orchestrator/src/main/java/com/trading/repository/OrderRepository.java), [`TradeRepository`](orchestrator/src/main/java/com/trading/repository/TradeRepository.java), [`PortfolioRepository`](orchestrator/src/main/java/com/trading/repository/PortfolioRepository.java), [`PositionRepository`](orchestrator/src/main/java/com/trading/repository/PositionRepository.java).
 
-#### Key Tech
-- Java 17 + Spring Boot 3
-- `net.devh:grpc-client-spring-boot-starter` for the C++ engine gRPC client
-- Spring Data JPA + HikariCP for PostgreSQL
+#### Core Service Implementations
+- **[`RiskEngine.java`](orchestrator/src/main/java/com/trading/service/RiskEngine.java)**:
+  - `validateBuy()`: Checks user portfolio for sufficient available cash (`cash >= qty * price`).
+  - `validateSell()`: Checks user position for sufficient asset quantity (`holding >= qty`).
+- **[`PortfolioService.java`](orchestrator/src/main/java/com/trading/service/PortfolioService.java)**:
+  - `applyTrade()` with atomic `@Transactional` boundary across buyer and seller.
+  - `applyBuy()`: Deducts cash, increments position quantity, and recalculates weighted average cost basis (`(oldCost * oldQty + tradeCost * tradeQty) / newQty`).
+  - `applySell()`: Debits position quantity and credits cash to seller portfolio.
+
+#### gRPC & Streaming Layer
+- **[`OrchestratorServiceImpl.java`](orchestrator/src/main/java/com/trading/grpc/OrchestratorServiceImpl.java)**:
+  - Implements `PlaceOrder`, `GetPortfolio`, `StreamTrades` gRPC server on port `50052`.
+  - Enforces pre-trade risk validation, persists orders in PostgreSQL, forwards validated orders to C++ engine via gRPC stub.
+- **[`TradeConsumer.java`](orchestrator/src/main/java/com/trading/grpc/TradeConsumer.java)**:
+  - Starts background subscription to C++ `StreamExecutions` upon `@PostConstruct`.
+  - Persists executed trades in PostgreSQL, updates buyer/seller order statuses to `FILLED`, and invokes `PortfolioService.applyTrade()`.
+
+#### REST API & Swagger UI
+- **[`TradingRestController.java`](orchestrator/src/main/java/com/trading/rest/TradingRestController.java)**:
+  - `POST /api/orders` — Submits order, validates risk, saves to DB, forwards to C++ engine.
+  - `GET /api/orders?userId=` — Returns all orders for a user.
+  - `DELETE /api/orders/{orderId}` — Cancels open order via C++ matching engine.
+  - `GET /api/portfolio/{userId}` — Returns user cash balance and current holdings.
+  - `GET /api/trades?symbol=` — Returns trade execution history.
+  - Fully annotated with OpenAPI `@Operation`, `@ApiResponse`, and `@Parameter`. Swagger UI available at `http://localhost:8080/swagger-ui/index.html`.
+
+#### C++ Engine Updates
+- Fixed [`matching_engine.cpp`](engine/src/matching_engine.cpp) to generate unique UUID `trade_id` and assign `timestamp_ms` for every executed trade.
+
+#### Verification & End-to-End Testing
+- **[`scripts/test_platform.ps1`](scripts/test_platform.ps1)** + **[`scripts/seed_test.sql`](scripts/seed_test.sql)**:
+  - Automated 9-step E2E integration test suite covering portfolio queries, risk rejection (cash & holdings), resting limit orders, cancellations, crossing order execution, trade streaming persistence, and portfolio cost-basis updates.
+  - **Result**: All 9/9 tests pass (100% functional).
 
 ---
 
-### Phase 4 — Python Strategy Engine *(Weeks 9–10)*
+### Phase 4 — Python Strategy Engine *(Next)*
 
 Autonomous signal generation from market data.
 

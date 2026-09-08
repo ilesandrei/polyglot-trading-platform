@@ -24,6 +24,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -69,36 +70,32 @@ public class TradeConsumer {
      */
     @PostConstruct
     public void startListening() {
-        // TODO: Build the StreamExecutions request.
-        //       Leave symbol empty to receive ALL trades across all symbols.
-        //
-        //   StreamExecutionsRequest request = StreamExecutionsRequest.newBuilder()
-        //       .setSymbol("")   // empty = subscribe to everything
-        //       .build();
+        StreamExecutionsRequest request = StreamExecutionsRequest.newBuilder()
+            .setSymbol("")   // empty = subscribe to all symbols
+            .build();
 
-        // TODO: Open the stream using the async stub.
-        //       The callbacks below (onNext, onError, onCompleted) fire on the gRPC thread.
-        //
-        //   asyncEngineStub.streamExecutions(request, new StreamObserver<com.trading.proto.Trade>() {
-        //
-        //       @Override
-        //       public void onNext(com.trading.proto.Trade trade) {
-        //           handleTrade(trade);
-        //       }
-        //
-        //       @Override
-        //       public void onError(Throwable t) {
-        //           log.error("[TRADE CONSUMER] Stream error: {}", t.getMessage());
-        //           // TODO (optional): implement reconnect with exponential backoff
-        //       }
-        //
-        //       @Override
-        //       public void onCompleted() {
-        //           log.warn("[TRADE CONSUMER] Stream closed by engine");
-        //       }
-        //   });
+        asyncEngineStub.streamExecutions(request, new StreamObserver<com.trading.proto.Trade>() {
+            @Override
+            public void onNext(com.trading.proto.Trade trade) {
+                try {
+                    handleTrade(trade);
+                } catch (Exception e) {
+                    log.error("[TRADE CONSUMER] Error processing trade {}: {}", trade.getTradeId(), e.getMessage(), e);
+                }
+            }
 
-        log.info("[TRADE CONSUMER] TODO: start listening to C++ engine stream");
+            @Override
+            public void onError(Throwable t) {
+                log.error("[TRADE CONSUMER] Stream error from C++ engine: {}", t.getMessage());
+            }
+
+            @Override
+            public void onCompleted() {
+                log.warn("[TRADE CONSUMER] Stream closed by C++ engine");
+            }
+        });
+
+        log.info("[TRADE CONSUMER] Subscribed to C++ engine executions stream");
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -112,37 +109,68 @@ public class TradeConsumer {
      * @param proto the Trade proto message from the engine
      */
     private void handleTrade(com.trading.proto.Trade proto) {
-        log.info("[TRADE] {} {} qty={} @ {}",
+        log.info("[TRADE] Executed {} {} qty={} @ {}",
             proto.getSymbol(), proto.getTradeId(),
             proto.getQuantity(), proto.getPrice());
 
-        // TODO: Step 1 — Convert proto to Trade entity and persist it.
-        //   Trade trade = new Trade();
-        //   trade.setId(UUID.fromString(proto.getTradeId()));
-        //   trade.setBuyOrderId(UUID.fromString(proto.getBuyOrderId()));
-        //   trade.setSellOrderId(UUID.fromString(proto.getSellOrderId()));
-        //   trade.setSymbol(proto.getSymbol());
-        //   trade.setQuantity(BigDecimal.valueOf(proto.getQuantity()));
-        //   trade.setPrice(BigDecimal.valueOf(proto.getPrice()));
-        //   trade.setExecutedAt(OffsetDateTime.ofInstant(
-        //       Instant.ofEpochMilli(proto.getTimestampMs()), ZoneOffset.UTC));
-        //   tradeRepository.save(trade);
+        // 1. Convert proto to entity and persist
+        Trade trade = new Trade();
+        UUID tradeId;
+        try {
+            tradeId = (proto.getTradeId() == null || proto.getTradeId().isBlank())
+                ? UUID.randomUUID()
+                : UUID.fromString(proto.getTradeId());
+        } catch (IllegalArgumentException e) {
+            tradeId = UUID.randomUUID();
+        }
+        trade.setId(tradeId);
 
-        // TODO: Step 2 — Load the buyer and seller orders from DB.
-        //   Optional<Order> buyOrder  = orderRepository.findById(trade.getBuyOrderId());
-        //   Optional<Order> sellOrder = orderRepository.findById(trade.getSellOrderId());
-        //   Handle the case where orders are not found (log + skip portfolio update).
+        trade.setBuyOrderId(UUID.fromString(proto.getBuyOrderId()));
+        trade.setSellOrderId(UUID.fromString(proto.getSellOrderId()));
+        trade.setSymbol(proto.getSymbol());
+        trade.setQuantity(BigDecimal.valueOf(proto.getQuantity()));
+        trade.setPrice(BigDecimal.valueOf(proto.getPrice()));
 
-        // TODO: Step 3 — Apply trade effects to portfolios.
-        //   portfolioService.applyTrade(trade, buyOrder.get(), sellOrder.get());
+        long ts = proto.getTimestampMs() > 0 ? proto.getTimestampMs() : System.currentTimeMillis();
+        trade.setExecutedAt(OffsetDateTime.ofInstant(Instant.ofEpochMilli(ts), ZoneOffset.UTC));
+        tradeRepository.save(trade);
 
-        // TODO: Step 4 — Update order statuses.
-        //   The engine doesn't push status updates — you need to check fill progress.
-        //   Simple approach: mark both orders as FILLED.
-        //   Advanced approach: track filled_qty and set PARTIALLY_FILLED vs FILLED.
+        // 2. Load orders
+        Optional<Order> buyOrderOpt  = orderRepository.findById(trade.getBuyOrderId());
+        Optional<Order> sellOrderOpt = orderRepository.findById(trade.getSellOrderId());
 
-        // TODO (optional): Step 5 — Broadcast over WebSocket.
-        //   Inject a SimpMessagingTemplate and send to "/topic/trades"
-        //   so any connected browser dashboard updates in real-time.
+        if (buyOrderOpt.isEmpty() || sellOrderOpt.isEmpty()) {
+            log.warn("[TRADE CONSUMER] Missing order(s) for trade {}: buyOrder present={}, sellOrder present={}",
+                trade.getId(), buyOrderOpt.isPresent(), sellOrderOpt.isPresent());
+            return;
+        }
+
+        Order buyOrder = buyOrderOpt.get();
+        Order sellOrder = sellOrderOpt.get();
+
+        // 3. Apply trade effects to portfolios
+        portfolioService.applyTrade(trade, buyOrder, sellOrder);
+
+        // 4. Update order statuses
+        updateOrderStatus(buyOrder, true);
+        updateOrderStatus(sellOrder, false);
+    }
+
+    private void updateOrderStatus(Order order, boolean isBuy) {
+        List<Trade> trades = isBuy
+            ? tradeRepository.findByBuyOrderId(order.getId())
+            : tradeRepository.findBySellOrderId(order.getId());
+
+        BigDecimal filledQty = trades.stream()
+            .map(Trade::getQuantity)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (filledQty.compareTo(order.getQuantity()) >= 0) {
+            order.setStatus("FILLED");
+        } else {
+            order.setStatus("PARTIALLY_FILLED");
+        }
+        order.setUpdatedAt(OffsetDateTime.now());
+        orderRepository.save(order);
     }
 }

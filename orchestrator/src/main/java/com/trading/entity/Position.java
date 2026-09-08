@@ -36,8 +36,6 @@ public class Position {
     /**
      * Owning portfolio — many positions belong to one portfolio.
      */
-    // TODO: add @ManyToOne @JoinColumn(name = "portfolio_id") Portfolio portfolio;
-
     @Column(name = "portfolio_id", nullable = false)
     private UUID portfolioId;
 

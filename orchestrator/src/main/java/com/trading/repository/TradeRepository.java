@@ -20,7 +20,7 @@ public interface TradeRepository extends JpaRepository<Trade, UUID> {
      * SQL: SELECT * FROM trades WHERE buy_order_id IN
      *        (SELECT id FROM orders WHERE user_id = ?)
      *
-     * TODO: you may want a @Query with a JOIN to make this a single SQL call.
+     * Note: A @Query with a JOIN can be used if single-query retrieval is desired.
      */
     List<Trade> findByBuyOrderId(UUID buyOrderId);
 

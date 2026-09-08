@@ -146,6 +146,8 @@ void MatchingEngine::match(Order& incoming, OrderBook& book) {
 
     //transaction receit
     Trade trade;
+    trade.trade_id = make_trade_id();
+    trade.timestamp_ms = now_ms();
     trade.symbol = incoming.symbol;
     trade.price = best_price.value();
     trade.quantity = trade_qty;

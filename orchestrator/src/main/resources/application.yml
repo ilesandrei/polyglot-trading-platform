@@ -13,7 +13,7 @@ spring:
   # ── PostgreSQL via Spring Data JPA ─────────────────────────────
   datasource:
     # docker-compose injects SPRING_DATASOURCE_URL
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/trading_db}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/trading_db}
     username: ${SPRING_DATASOURCE_USERNAME:trading_user}
     password: ${SPRING_DATASOURCE_PASSWORD:trading_pass}
     driver-class-name: org.postgresql.Driver

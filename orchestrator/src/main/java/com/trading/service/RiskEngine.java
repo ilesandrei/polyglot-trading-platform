@@ -73,48 +73,48 @@ public class RiskEngine {
     // ─────────────────────────────────────────────────────────────────────
 
     private RiskResult validateBuy(Order order, Portfolio portfolio) {
-        // TODO: Calculate the cash required for this order.
+        // Calculate the cash required for this order.
         //       For a LIMIT order: required = order.getQuantity() * order.getPrice()
         //       For a MARKET order: you need a strategy (e.g., reject, use last price, etc.)
-        //
-        //       Then compare against portfolio.getCash().
-        //       If portfolio.getCash().compareTo(required) < 0 → reject
-        //
-        // Example structure:
-        //   BigDecimal required = order.getQuantity().multiply(order.getPrice());
-        //   if (portfolio.getCash().compareTo(required) < 0) {
-        //       return RiskResult.reject("Insufficient cash. Have: " + portfolio.getCash()
-        //                                + " Need: " + required);
-        //   }
-        //   return RiskResult.approve();
 
-        throw new UnsupportedOperationException("TODO: implement BUY risk check");
-    }
+        BigDecimal required;
+        if ("MARKET".equals(order.getType())) {
+            // Market orders have no guaranteed price — safest approach is to reject them
+            // at the risk layer and let the orchestrator handle pricing separately,
+            // OR require a "worst-case price" estimate to be passed in.
+            return RiskResult.reject("Market BUY orders require a price estimate for risk validation.");
+        } else {
+            // LIMIT order: price is known
+            required = order.getQuantity().multiply(order.getPrice());
+        }
+        if (portfolio.getCash().compareTo(required) < 0) {
+            return RiskResult.reject("Insufficient cash. Have: " + portfolio.getCash()
+                                    + " Need: " + required);
+        }
+        return RiskResult.approve();
+}
 
     // ─────────────────────────────────────────────────────────────────────
     //  SELL validation
     // ─────────────────────────────────────────────────────────────────────
 
     private RiskResult validateSell(Order order, Portfolio portfolio) {
-        // TODO: Look up the user's position for this symbol.
-        //       Use positionRepository.findByPortfolioIdAndSymbol(portfolio.getId(), order.getSymbol())
-        //
+        //       Look up the user's position for this symbol.
         //       If no position exists, or position.getQuantity() < order.getQuantity() → reject.
         //
-        // Example structure:
-        //   Optional<Position> posOpt = positionRepository
-        //       .findByPortfolioIdAndSymbol(portfolio.getId(), order.getSymbol());
-        //   if (posOpt.isEmpty()) {
-        //       return RiskResult.reject("No position in " + order.getSymbol());
-        //   }
-        //   Position pos = posOpt.get();
-        //   if (pos.getQuantity().compareTo(order.getQuantity()) < 0) {
-        //       return RiskResult.reject("Insufficient holdings. Have: " + pos.getQuantity()
-        //                                + " Selling: " + order.getQuantity());
-        //   }
-        //   return RiskResult.approve();
 
-        throw new UnsupportedOperationException("TODO: implement SELL risk check");
+        Optional<Position> posOpt = positionRepository
+            .findByPortfolioIdAndSymbol(portfolio.getId(), order.getSymbol());
+        if(posOpt.isEmpty()) {
+            return RiskResult.reject("No position in " + order.getSymbol());
+        }
+        Position pos = posOpt.get();
+        if(pos.getQuantity().compareTo(order.getQuantity()) < 0) {
+           return RiskResult.reject("Insufficient holdings. Have: " + pos.getQuantity()
+                                    + " Selling: " + order.getQuantity());        
+        }
+
+        return RiskResult.approve();
     }
 
     // ─────────────────────────────────────────────────────────────────────

@@ -42,7 +42,6 @@ public class Portfolio {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
-
-    // TODO: add a @OneToMany(mappedBy = "portfolio") List<Position> positions
-    //       so that getPortfolio() can return the full holdings snapshot.
+    // Note: Positions are queried via PositionRepository.findByPortfolioId()
+    // to keep entity graphs lightweight and avoid lazy-loading issues.
 }
