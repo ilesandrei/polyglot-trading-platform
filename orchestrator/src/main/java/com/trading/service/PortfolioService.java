@@ -61,6 +61,18 @@ public class PortfolioService {
         applySell(trade, sellerOrder.getUserId());
     }
 
+    /**
+     * Apply an instant paper market fill for a single user (acting against the market maker).
+     */
+    @Transactional
+    public void applyPaperTrade(Trade trade, UUID userId, String side) {
+        if ("BUY".equalsIgnoreCase(side)) {
+            applyBuy(trade, userId);
+        } else {
+            applySell(trade, userId);
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     //  Buyer update
     // ─────────────────────────────────────────────────────────────────────
@@ -140,18 +152,19 @@ public class PortfolioService {
                 sellerId, trade.getSymbol(), oldQty, sellQty));
         }
         BigDecimal newQty = oldQty.subtract(sellQty);
-        position.setQuantity(newQty);
-        
-        // If fully sold out, reset average cost to 0
-        if (newQty.compareTo(BigDecimal.ZERO) == 0) {
-            position.setAverageCost(BigDecimal.ZERO);
-        }
-        position.setUpdatedAt(OffsetDateTime.now());
-        
-        // 5. Save both entities
         portfolioRepository.save(portfolio);
-        positionRepository.save(position);
-        log.info("[PORTFOLIO] Seller {} updated: cash={}, {} remaining_pos={}",
-            sellerId, portfolio.getCash(), trade.getSymbol(), position.getQuantity());
+
+        // If fully sold out, remove position from active holdings
+        if (newQty.compareTo(BigDecimal.ZERO) <= 0) {
+            positionRepository.delete(position);
+            log.info("[PORTFOLIO] Seller {} closed entire position in {}. Position removed.",
+                sellerId, trade.getSymbol());
+        } else {
+            position.setQuantity(newQty);
+            position.setUpdatedAt(OffsetDateTime.now());
+            positionRepository.save(position);
+            log.info("[PORTFOLIO] Seller {} updated: cash={}, {} remaining_pos={}",
+                sellerId, portfolio.getCash(), trade.getSymbol(), position.getQuantity());
+        }
     }
 }

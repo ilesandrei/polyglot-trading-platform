@@ -79,10 +79,11 @@ public class RiskEngine {
 
         BigDecimal required;
         if ("MARKET".equals(order.getType())) {
-            // Market orders have no guaranteed price — safest approach is to reject them
-            // at the risk layer and let the orchestrator handle pricing separately,
-            // OR require a "worst-case price" estimate to be passed in.
-            return RiskResult.reject("Market BUY orders require a price estimate for risk validation.");
+            if (order.getPrice() != null && order.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+                required = order.getQuantity().multiply(order.getPrice());
+            } else {
+                return RiskResult.reject("Market BUY orders require a price estimate for risk validation.");
+            }
         } else {
             // LIMIT order: price is known
             required = order.getQuantity().multiply(order.getPrice());
@@ -92,7 +93,7 @@ public class RiskEngine {
                                     + " Need: " + required);
         }
         return RiskResult.approve();
-}
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  SELL validation

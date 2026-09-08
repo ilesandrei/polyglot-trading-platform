@@ -130,11 +130,10 @@ services:
       - full
 
   # ─── Python Strategy Engine ──────────────────────────────────────
-  # Placeholder — Dockerfile will be added in Phase 4
   python-strategy:
     build:
-      context: ./strategy
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: strategy/Dockerfile
     container_name: trading-python-strategy
     restart: unless-stopped
     depends_on:

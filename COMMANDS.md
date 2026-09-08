@@ -39,14 +39,16 @@ powershell -ExecutionPolicy Bypass -File .\scripts\test_platform.ps1
 
 ---
 
-## 2. Interactive Swagger UI & OpenAPI
+## 2. Interactive Web Trading Dashboard & Swagger UI
 
 Once the Java orchestrator is running, open your browser to:
 
-| Interface | URL |
-|---|---|
-| **Swagger UI** | [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html) |
-| **OpenAPI Spec (JSON)** | [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs) |
+| Interface | URL | Description |
+|---|---|---|
+| **Web Trading Terminal** | [http://localhost:8080/](http://localhost:8080/) | Live institutional trading dashboard with Depth Order Book, Portfolio & Holdings, Order Placement, and Cancel controls. |
+| **Swagger UI** | [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html) | Interactive OpenAPI 3 endpoint documentation & direct API tester. |
+| **OpenAPI Spec (JSON)** | [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs) | Raw OpenAPI v3 specification. |
+
 
 ### Using Swagger UI:
 1. Navigate to [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html).
@@ -73,7 +75,51 @@ curl -X GET "http://localhost:8080/api/portfolio/00000000-0000-0000-0000-0000000
 
 ---
 
-### B. Place an Order (Pre-trade Risk & C++ Execution)
+### B. Live Market Quotes & Asset Catalog
+#### 1. Fetch Asset Catalog (Stocks & Robinhood Memecoins):
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8080/api/market/catalog" | Format-Table symbol, name, category, icon
+```
+#### 2. Query Real-Time Quote for Any Asset (Crypto or Stock):
+```powershell
+# Ethereum live quote
+Invoke-RestMethod -Uri "http://localhost:8080/api/market/quote?symbol=ETH-USD" | ConvertTo-Json
+
+# Dogecoin live quote
+Invoke-RestMethod -Uri "http://localhost:8080/api/market/quote?symbol=DOGE-USD" | ConvertTo-Json
+
+# Pepe memecoin live quote
+Invoke-RestMethod -Uri "http://localhost:8080/api/market/quote?symbol=PEPE-USD" | ConvertTo-Json
+
+# US Stock live quote (Nvidia)
+Invoke-RestMethod -Uri "http://localhost:8080/api/market/quote?symbol=NVDA" | ConvertTo-Json
+```
+
+---
+
+### C. Execute Instant Paper Market Order (Live Real-World Fill)
+Execute a paper buy or sell at the current real-world market price with instant execution (no waiting for counterparties):
+**PowerShell:**
+```powershell
+$order = @{
+    userId   = "00000000-0000-0000-0000-000000000001"
+    symbol   = "ETH-USD"
+    side     = "BUY"
+    quantity = 0.5
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/market/instant-order" -Method Post -Body $order -ContentType "application/json" | ConvertTo-Json
+```
+**cURL:**
+```bash
+curl -X POST "http://localhost:8080/api/market/instant-order" \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"00000000-0000-0000-0000-000000000001","symbol":"ETH-USD","side":"BUY","quantity":0.5}'
+```
+
+---
+
+### D. Place a Limit Order into C++ Matching Engine (Resting in Book)
 **PowerShell:**
 ```powershell
 $order = @{
@@ -103,7 +149,7 @@ curl -X POST "http://localhost:8080/api/orders" \
 
 ---
 
-### C. List All Orders for a User
+### E. List All Orders for a User
 **PowerShell:**
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:8080/api/orders?userId=00000000-0000-0000-0000-000000000001" | ConvertTo-Json -Depth 5
@@ -115,7 +161,7 @@ curl -X GET "http://localhost:8080/api/orders?userId=00000000-0000-0000-0000-000
 
 ---
 
-### D. Cancel an Open Order
+### F. Cancel an Open Order
 **PowerShell:**
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:8080/api/orders/<ORDER_UUID>" -Method Delete
@@ -127,7 +173,7 @@ curl -X DELETE "http://localhost:8080/api/orders/<ORDER_UUID>"
 
 ---
 
-### E. View Trade Execution History by Symbol
+### G. View Trade Execution History by Symbol
 **PowerShell:**
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:8080/api/trades?symbol=AAPL" | ConvertTo-Json -Depth 5
@@ -228,3 +274,35 @@ docker compose up -d cpp-engine
 cd orchestrator
 .\gradlew compileJava
 ```
+
+---
+
+## 7. Python Strategy Engine (Phase 4)
+
+### Compile Proto Stubs:
+```powershell
+cd strategy
+python generate_proto.py
+```
+
+### Run Automated Strategy Unit Tests:
+```powershell
+cd strategy
+python -m unittest discover tests
+```
+
+### Run Bot with Default Moving Average Crossover (Mock Data):
+```powershell
+cd strategy
+python src/main.py
+```
+
+### Run Bot with RSI Strategy on Live Data (Yahoo Finance):
+```powershell
+cd strategy
+$env:TRADING_SYMBOL = "AAPL"
+$env:TRADING_STRATEGY = "RSI"
+$env:USE_MOCK_DATA = "false"
+python src/main.py
+```
+

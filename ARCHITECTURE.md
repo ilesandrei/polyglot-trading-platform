@@ -11,7 +11,7 @@ The platform uses a **polyglot microservices architecture**, assigning each core
 ```
                   ┌──────────────────────────────────────────────┐
                   │          External Clients / Browser          │
-                  │   (Swagger UI / REST Clients / Frontends)    │
+                  │   (Trading Terminal / Swagger / Frontends)   │
                   └──────────────────────┬───────────────────────┘
                                          │ HTTP 8080 (REST / JSON)
                                          ▼
@@ -21,9 +21,15 @@ The platform uses a **polyglot microservices architecture**, assigning each core
 │   ┌───────────────────────────┐                ┌─────────────────────────────┐   │
 │   │   TradingRestController   │                │   OrchestratorServiceImpl   │   │
 │   │    (HTTP API + Swagger)   │                │         (gRPC 50052)        │   │
-│   └─────────────┬─────────────┘                └──────────────┬──────────────┘   │
-│                 │                                             │                  │
-│                 ▼                                             ▼                  │
+│   └───────┬───────────┬───────┘                └──────────────┬──────────────┘   │
+│           │           │                                       │                  │
+│           │           ▼ (Instant Paper Order)                 │                  │
+│           │    ┌─────────────────────────────┐                │                  │
+│           │    │      MarketDataService      │                │                  │
+│           │    │ (Live Quotes + 4s TTL Cache)│                │                  │
+│           │    └──────────────┬──────────────┘                │                  │
+│           │                   │                               │                  │
+│           ▼                   ▼                               ▼                  │
 │   ┌──────────────────────────────────────────────────────────────────────────┐   │
 │   │                        RiskEngine (Pre-Trade Checks)                     │   │
 │   │             • Cash Balance Check     • Asset Holding Check               │   │
@@ -31,7 +37,7 @@ The platform uses a **polyglot microservices architecture**, assigning each core
 │                                         │                                        │
 │                 ┌───────────────────────┴───────────────────────┐                │
 │                 │                                               ▼                │
-│                 │ (Order Validated)               ┌──────────────────────────┐   │
+│                 │ (Limit Order Validated)         ┌──────────────────────────┐   │
 │                 │                                 │   Order & Trade DB Repo  │   │
 │                 ▼                                 └─────────────┬────────────┘   │
 │   ┌───────────────────────────┐                                 │                │
@@ -48,7 +54,7 @@ The platform uses a **polyglot microservices architecture**, assigning each core
 │                 ▼                                          │    │                │
 │   ┌───────────────────────────┐                            │    │                │
 │   │     PortfolioService      │                            │    │                │
-│   │  (@Transactional Updates) │                            │    │                │
+│   │  (applyTrade / PaperTrade)│                            │    │                │
 │   └─────────────┬─────────────┘                            │    │                │
 └─────────────────┼──────────────────────────────────────────┼────┼────────────────┘
                   │                                          │    │
@@ -60,15 +66,23 @@ The platform uses a **polyglot microservices architecture**, assigning each core
 │  ┌────────────────────────────────┐  │                     │  │  • users         │
 │  │       ExecutionService         │  │                     │  │  • portfolios    │
 │  │   (gRPC Server: Port 50051)    │  │                     │  │  • positions     │
-│  └────────────────┬───────────────┘  │                     │  │  • orders        │
-│                   │                  │                     │  │  • trades        │
-│                   ▼                  │                     │  └──────────────────┘
+│  │   (gRPC Server: Port 50051)    │  │                     │  │  • orders        │
+│  └────────────────┬───────────────┘  │                     │  │  • trades        │
+│                   │                  │                     │  └──────────────────┘
+│                   ▼                  │                     │
 │  ┌────────────────────────────────┐  │                     │
 │  │     MatchingEngine (Core)      │  │                     │
 │  │   • Price-Time Priority (FIFO) │  │                     │
 │  │   • OrderBook per symbol       │──┼─────────────────────┘
 │  │   • O(1) Cancellations         │  │ (StreamExecutions)
 │  └────────────────────────────────┘  │
+└──────────────────────────────────────┘
+                  │
+                  ▼ HTTP / HTTPS
+┌──────────────────────────────────────┐
+│  Live Market Data Feeds (24/7)       │
+│  • Crypto: ETH, BTC, DOGE, PEPE, SOL │
+│  • Equities: NVDA, TSLA, AAPL, MSFT  │
 └──────────────────────────────────────┘
 ```
 
@@ -80,7 +94,9 @@ The platform uses a **polyglot microservices architecture**, assigning each core
 |---|---|---|---|
 | **Execution Engine** | C++20, gRPC, CMake | Order matching, limit order books, execution generation | Zero-overhead abstractions, deterministic microsecond latency, cache-friendly data structures, manual memory control. |
 | **Orchestrator** | Java 21, Spring Boot 3, Hibernate/JPA | Risk validation, account balance & position accounting, order orchestration, REST/OpenAPI and gRPC endpoints | Strong transactional isolation (`@Transactional`), rich ecosystem, robust enterprise relational data integration. |
+| **Market Data Engine** | Java 21, HTTP Client, Caffeine-style TTL Cache | Real-time price discovery for stocks and 24/7 crypto/memecoins | Direct zero-config connection to exchange chart feeds with sub-millisecond local cache retrieval. |
 | **Persistence** | PostgreSQL 16 | ACID system of record for users, portfolios, positions, orders, and executed trades | Strict data integrity, foreign keys, row-level locking capabilities, precision decimal handling (`NUMERIC(18,8)`). |
+| **Trading Terminal** | Vanilla JS / CSS3 (Dark Mode) | Real-time asset catalog, ticker search, live hero banner, order book depth visualizer, live PnL tracking | Blazing fast client-side rendering with zero heavy bundle overhead and institutional glassmorphic styling. |
 | **Contracts** | Protocol Buffers v3 | Canonical type definitions and cross-service RPC contracts | Strict schemas, backward compatibility, language-neutral high performance binary serialization. |
 | **Containerization** | Docker, Compose | Reproducible build and runtime environment across platforms | Multi-stage slim production images, isolated internal networking. |
 
@@ -132,16 +148,25 @@ Executes atomically within `@Transactional` boundaries upon trade execution:
   - Cash credited: $\text{cash}_{\text{new}} = \text{cash}_{\text{old}} + (\text{quantity} \times \text{price})$
   - Position quantity debited: $\text{qty}_{\text{new}} = \text{qty}_{\text{old}} - \text{quantity}$
 
-#### C. Asynchronous Trade Consumer (`TradeConsumer.java`)
+#### C. Live Market Feed Engine (`MarketDataService.java`)
+- Connects directly to exchange chart endpoints for real-world equity & crypto prices.
+- In-memory thread-safe 4-second TTL cache prevents rate-limiting and guarantees <1ms quote responses.
+- Auto-normalizes crypto symbols (`ETH` $\to$ `ETH-USD`, `PEPE` $\to$ `PEPE-USD`).
+- Slices comprehensive market metrics: current price, 24h change percent, day high, day low, and volume.
+
+#### D. Asynchronous Trade Consumer (`TradeConsumer.java`)
 - On application boot (`@PostConstruct`), connects to the C++ engine's gRPC execution stream (`StreamExecutions`).
 - When a trade is received from the matching engine:
   1. Persists the `Trade` record into PostgreSQL.
   2. Loads buyer and seller orders from DB and updates statuses to `FILLED` (or `PARTIALLY_FILLED`).
   3. Calls `PortfolioService.applyTrade()` to update balances and positions.
 
-#### D. API Surfaces
+#### E. API Surfaces
 - **REST Controller (`TradingRestController.java`)**: 
-  - `POST /api/orders` — Submit new order.
+  - `GET /api/market/catalog` — Returns curated list of popular stocks and crypto/memecoins.
+  - `GET /api/market/quote?symbol=` — Returns real-time quote for any stock or crypto pair.
+  - `POST /api/market/instant-order` — Instantly fills paper trades against live market prices without counter-party delay.
+  - `POST /api/orders` — Submits order to C++ matching engine.
   - `GET /api/orders?userId=` — Query order history.
   - `DELETE /api/orders/{orderId}` — Cancel order.
   - `GET /api/portfolio/{userId}` — Query portfolio balances and holdings.
@@ -152,9 +177,34 @@ Executes atomically within `@Transactional` boundaries upon trade execution:
 
 ---
 
-## 4. End-to-End Data Flow
+## 4. End-to-End Data Flows
 
-### Sequence: Crossing Order Match & Settlement
+### Flow A: Instant Paper Market Execution (Single-User Live Trading)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Trader as Paper Trader
+    participant API as TradingRestController
+    participant Mkt as MarketDataService
+    participant Risk as RiskEngine
+    participant DB as PostgreSQL 16
+    participant Port as PortfolioService
+
+    Trader->>API: POST /api/market/instant-order (BUY 0.5 ETH-USD)
+    API->>Mkt: getQuote("ETH-USD")
+    Mkt-->>API: Live Price: $2,485.27
+    API->>Risk: validateBuy(cash >= 0.5 * 2485.27 = $1,242.64)
+    Risk-->>API: Approved
+    API->>DB: INSERT user Order (Status: FILLED)
+    API->>DB: INSERT counter Order (Market Maker liquidity)
+    API->>DB: INSERT Trade record ($2,485.27, qty: 0.5)
+    API->>Port: applyPaperTrade(trade, userId, "BUY")
+    Port->>DB: Cash -$1,242.64, ETH Position +0.5 (avg cost: $2,485.27)
+    API-->>Trader: 200 OK (Instant Fill Confirmation)
+```
+
+### Flow B: Limit Order Match & C++ Engine Settlement
 
 ```mermaid
 sequenceDiagram

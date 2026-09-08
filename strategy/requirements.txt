@@ -1,0 +1,14 @@
+# ─── gRPC & Protocol Buffers ──────────────────────────────────────────
+grpcio>=1.62.0
+grpcio-tools>=1.62.0
+protobuf>=4.25.0
+
+# ─── Data Analysis & Quantitative Calculations ───────────────────────
+pandas>=2.2.0
+numpy>=1.26.0
+
+# ─── Market Data Sources ──────────────────────────────────────────────
+yfinance>=0.2.38
+
+# ─── Utilities ────────────────────────────────────────────────────────
+python-dotenv>=1.0.1

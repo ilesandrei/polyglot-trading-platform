@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Institutional real-time electronic trading terminal and exchange dashboard for Polyglot Trading Platform.">
+  <title>Polyglot Exchange — Trading Terminal</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ── Top Navigation Bar ──────────────────────────────────────── -->
+  <nav class="navbar">
+    <div class="brand">
+      <div class="brand-logo">⚡</div>
+      <div>
+        <h1 class="brand-title">POLYGLOT EXCHANGE</h1>
+        <div class="brand-subtitle">C++20 Engine • Java 21 Hub • Python Quant</div>
+      </div>
+    </div>
+
+    <div class="system-status-pills">
+      <div class="status-badge" id="status-engine">
+        <span class="status-dot"></span> C++ Engine (50051)
+      </div>
+      <div class="status-badge" id="status-db">
+        <span class="status-dot"></span> PostgreSQL (5433)
+      </div>
+      <div class="status-badge" id="status-orchestrator">
+        <span class="status-dot"></span> Spring Hub (8080)
+      </div>
+      <a href="/swagger-ui/index.html" target="_blank" style="text-decoration: none;">
+        <div class="status-badge" style="background: rgba(0, 242, 254, 0.1); border-color: rgba(0, 242, 254, 0.35); color: var(--accent-cyan);">
+          📖 Swagger Docs
+        </div>
+      </a>
+    </div>
+
+    <div class="user-selector-container">
+      <label class="user-selector-label" for="user-select">Active Trader</label>
+      <select id="user-select" class="user-select">
+        <option value="00000000-0000-0000-0000-000000000001" selected>Trader 1 (Buyer)</option>
+        <option value="00000000-0000-0000-0000-000000000002">Trader 2 (Seller)</option>
+      </select>
+    </div>
+  </nav>
+
+  <!-- ── Asset Catalog & Search Bar ────────────────────────────────── -->
+  <section class="asset-catalog-bar" aria-label="Market Asset Catalog">
+    <div class="catalog-header-row">
+      <div class="catalog-tabs">
+        <button type="button" class="catalog-tab-btn active" data-cat="ALL">All Assets</button>
+        <button type="button" class="catalog-tab-btn" data-cat="CRYPTO">🔥 Crypto & Memecoins</button>
+        <button type="button" class="catalog-tab-btn" data-cat="STOCK">📈 US Equities</button>
+      </div>
+      <div class="ticker-search-box">
+        <input type="text" id="ticker-search-input" class="search-input" placeholder="Search (e.g. PEPE, ETH, TSLA)...">
+        <button type="button" id="ticker-search-btn" class="search-btn">Quote & Trade</button>
+      </div>
+    </div>
+    <div class="asset-chips-row" id="catalog-chips-row">
+      <!-- Injected dynamically via JS -->
+    </div>
+  </section>
+
+  <!-- ── Live Ticker Hero Banner ──────────────────────────────────── -->
+  <section class="ticker-hero-card" id="ticker-hero">
+    <div class="ticker-hero-left">
+      <div class="ticker-hero-icon" id="hero-icon">🪙</div>
+      <div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span class="ticker-hero-symbol" id="hero-symbol">ETH-USD</span>
+          <span class="badge-tag" id="hero-category-tag" style="background: rgba(0, 242, 254, 0.15); color: var(--accent-cyan);">CRYPTO</span>
+          <span style="font-size: 0.72rem; color: var(--buy-green); display: flex; align-items: center; gap: 4px;">
+            <span class="status-dot"></span> LIVE FEED
+          </span>
+        </div>
+        <div class="ticker-hero-name" id="hero-name">Ethereum (USD) • 24/7 Market</div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap;">
+      <div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Real-Time Price</div>
+        <div class="ticker-hero-price">
+          <span id="hero-price">$0.00</span>
+          <span class="ticker-change-badge" id="hero-change">+0.00%</span>
+        </div>
+      </div>
+
+      <div class="ticker-stats-group">
+        <div class="ticker-stat">
+          <span class="ticker-stat-label">Market Cap</span>
+          <span class="ticker-stat-val" id="hero-mcap" style="color: var(--accent-cyan); font-weight: 600;">$0.00</span>
+        </div>
+        <div class="ticker-stat">
+          <span class="ticker-stat-label">24h High</span>
+          <span class="ticker-stat-val" id="hero-high">$0.00</span>
+        </div>
+        <div class="ticker-stat">
+          <span class="ticker-stat-label">24h Low</span>
+          <span class="ticker-stat-val" id="hero-low">$0.00</span>
+        </div>
+        <div class="ticker-stat">
+          <span class="ticker-stat-label">Engine</span>
+          <span class="ticker-stat-val" id="hero-exec-mode" style="color: var(--accent-cyan);">Instant Paper</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Metrics Summary Bar ─────────────────────────────────────── -->
+  <header class="metrics-grid">
+    <div class="metric-card">
+      <div class="metric-label">Available Cash</div>
+      <div class="metric-value" id="metric-cash">$0.00</div>
+      <div class="metric-sub">Settled purchasing power</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Active Symbol Holding</div>
+      <div class="metric-value" id="metric-holdings">0.00 ETH-USD</div>
+      <div class="metric-sub">Asset balance in custody</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Total Portfolio Equity</div>
+      <div class="metric-value" id="metric-est-value" style="color: var(--accent-cyan);">$0.00</div>
+      <div class="metric-sub">Cash + holdings market value</div>
+    </div>
+  </header>
+
+  <!-- ── Interactive Candlestick & Price Chart ─────────────────────── -->
+  <section class="panel chart-panel" aria-label="Interactive Market Chart">
+    <div class="panel-header chart-toolbar">
+      <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+        <div class="panel-title">
+          <span>Interactive Price Chart</span>
+          <span class="symbol-badge" id="chart-symbol-badge">ETH-USD</span>
+        </div>
+
+        <!-- Timeframe selector -->
+        <div class="chart-timeframe-group">
+          <button type="button" class="tf-btn active" data-range="1d" data-interval="5m">1D</button>
+          <button type="button" class="tf-btn" data-range="5d" data-interval="15m">5D</button>
+          <button type="button" class="tf-btn" data-range="1mo" data-interval="1h">1M</button>
+          <button type="button" class="tf-btn" data-range="1y" data-interval="1d">1Y</button>
+        </div>
+
+        <!-- Chart Type Switcher: Candles vs Line/Area -->
+        <div class="chart-type-group">
+          <button type="button" class="chart-toggle-btn active" id="btn-chart-candles" title="Candlestick Chart">🕯️ Candles</button>
+          <button type="button" class="chart-toggle-btn" id="btn-chart-area" title="Area Line Chart">📈 Line</button>
+        </div>
+
+        <!-- Indicator Toggles -->
+        <div class="indicator-group">
+          <button type="button" class="indicator-btn active" id="btn-toggle-sma" title="20-period Simple Moving Average">SMA 20</button>
+          <button type="button" class="indicator-btn active" id="btn-toggle-vol" title="Volume Histogram">Volume</button>
+        </div>
+
+        <!-- Vertical Height Controls -->
+        <div class="vertical-zoom-group">
+          <button type="button" class="vzoom-btn" id="btn-vzoom-in" title="Stretch Candle Height (Zoom In)">↕️ +</button>
+          <button type="button" class="vzoom-btn" id="btn-vzoom-out" title="Compress Candle Height (Zoom Out)">↕️ −</button>
+          <button type="button" class="vzoom-btn" id="btn-vzoom-reset" title="Auto-Fit Height (Reset)">Auto</button>
+        </div>
+
+        <!-- Memecoin Side Scale Unit Switcher (Shown dynamically for memecoins) -->
+        <div class="axis-scale-group" id="memecoin-scale-group" style="display: none;">
+          <button type="button" class="axis-scale-btn active" id="btn-side-mcap" title="Display Market Cap ($) on side scale">🏛️ MCap ($)</button>
+          <button type="button" class="axis-scale-btn" id="btn-side-price" title="Display unit Price on side scale">🪙 Price</button>
+        </div>
+      </div>
+
+      <!-- Live Hover Legend / OHLCV readout -->
+      <div class="chart-legend" id="chart-legend">
+        <span class="legend-item"><span class="legend-label">O:</span> <span class="legend-val" id="legend-open">—</span></span>
+        <span class="legend-item"><span class="legend-label">H:</span> <span class="legend-val" id="legend-high">—</span></span>
+        <span class="legend-item"><span class="legend-label">L:</span> <span class="legend-val" id="legend-low">—</span></span>
+        <span class="legend-item"><span class="legend-label">C:</span> <span class="legend-val" id="legend-close">—</span></span>
+        <span class="legend-item"><span class="legend-label">Vol:</span> <span class="legend-val" id="legend-vol">—</span></span>
+        <span class="legend-item"><span class="legend-label">MCap:</span> <span class="legend-val" id="legend-mcap" style="color: var(--accent-cyan);">—</span></span>
+      </div>
+    </div>
+
+    <!-- Chart Container -->
+    <div id="chart-container" class="chart-container"></div>
+  </section>
+
+  <!-- ── Main Trading Grid ───────────────────────────────────────── -->
+  <main class="trading-layout">
+
+    <!-- 1. Left Panel: Order Book -->
+    <section class="panel" aria-label="Order Book">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span>Order Book</span>
+          <span class="symbol-badge" id="active-symbol-badge">ETH-USD</span>
+        </div>
+        <span style="font-size: 0.72rem; color: var(--text-muted);">Real-Time Depth</span>
+      </div>
+
+      <!-- Asks (Red) -->
+      <table class="orderbook-table" aria-label="Asks Depth">
+        <thead>
+          <tr>
+            <th>Price</th>
+            <th>Size</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody id="orderbook-asks">
+          <tr><td colspan="3" style="text-align: center; color: var(--text-muted);">Loading asks...</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Spread Divider -->
+      <div class="spread-divider">
+        <span id="spread-value">Spread: —</span>
+        <span style="color: var(--accent-cyan); font-weight: 600;">MARKET ACTIVE</span>
+      </div>
+
+      <!-- Bids (Green) -->
+      <table class="orderbook-table" aria-label="Bids Depth">
+        <tbody id="orderbook-bids">
+          <tr><td colspan="3" style="text-align: center; color: var(--text-muted);">Loading bids...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 2. Center Panel: Execution Form & Position Summary -->
+    <section class="panel" aria-label="Order Execution and Holdings">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span>Place Order</span>
+          <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">(Pre-Trade Risk Enforced)</span>
+        </div>
+        <span style="font-size: 0.72rem; color: var(--buy-green);">● Engine Ready</span>
+      </div>
+
+      <div class="order-form-container">
+        <!-- Execution Mode Switcher: Instant Fill vs Limit Order -->
+        <div class="mode-toggle-group">
+          <button type="button" class="mode-btn active" data-mode="INSTANT" id="mode-instant-btn">
+            ⚡ Instant Market Fill (Live)
+          </button>
+          <button type="button" class="mode-btn" data-mode="LIMIT" id="mode-limit-btn">
+            📖 Limit Order (C++ Book)
+          </button>
+        </div>
+
+        <!-- Buy / Sell Toggle -->
+        <div class="side-toggle-group">
+          <button type="button" class="side-btn active-buy" data-side="BUY">BUY</button>
+          <button type="button" class="side-btn" data-side="SELL">SELL</button>
+        </div>
+
+        <form id="order-form" style="display: flex; flex-direction: column; gap: 14px;">
+          <!-- Price Input -->
+          <div class="form-group">
+            <label class="form-label" for="order-price">
+              <span id="price-input-label">Execution Price</span>
+              <span>USD</span>
+            </label>
+            <input type="number" step="any" min="0.00000001" class="form-input" id="order-price" value="0.00" required>
+            <div id="price-hint" style="font-size: 0.72rem; color: var(--accent-cyan); margin-top: 2px;">
+              ⚡ Locked to live market price for instant fill
+            </div>
+          </div>
+
+          <!-- Quantity Input -->
+          <div class="form-group">
+            <label class="form-label" for="order-qty">
+              <span>Quantity</span>
+              <span id="qty-symbol-label">Units</span>
+            </label>
+            <input type="number" step="any" min="0.0001" class="form-input" id="order-qty" value="1" required>
+            
+            <div class="quick-pct-buttons">
+              <button type="button" class="pct-btn" data-pct="0.25">25%</button>
+              <button type="button" class="pct-btn" data-pct="0.50">50%</button>
+              <button type="button" class="pct-btn" data-pct="0.75">75%</button>
+              <button type="button" class="pct-btn" data-pct="1.00">MAX</button>
+            </div>
+          </div>
+
+          <!-- Estimated Total -->
+          <div class="order-estimate-box">
+            <span style="color: var(--text-muted);">Estimated Total</span>
+            <strong id="order-total-estimate" style="font-family: var(--font-mono); color: var(--text-primary); font-size: 1rem;">$0.00</strong>
+          </div>
+
+          <button type="submit" class="submit-order-btn submit-buy" id="submit-order-btn">
+            Buy ETH-USD
+          </button>
+        </form>
+      </div>
+
+      <!-- Current Positions Breakdown with Live PnL & Close Button -->
+      <div class="panel-header" style="border-top: 1px solid var(--border-subtle); margin-top: auto;">
+        <div class="panel-title">Portfolio Holdings & Live P&L</div>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Asset</th>
+            <th>Quantity</th>
+            <th>Avg Cost</th>
+            <th>Live Price</th>
+            <th>Est Value</th>
+            <th>PnL</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="positions-body">
+          <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Loading positions...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 3. Right Panel: Live Trade Tape -->
+    <section class="panel" aria-label="Recent Executions">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span>Executed Trades</span>
+        </div>
+        <span style="font-size: 0.72rem; color: var(--text-muted);">Live Feed</span>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Price</th>
+            <th>Qty</th>
+            <th>Total</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody id="trades-body">
+          <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Loading trades...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+  </main>
+
+  <!-- ── Bottom Panel: Active Orders & History ───────────────────── -->
+  <section class="panel" style="margin: 20px 32px 0 32px;" aria-label="Active Orders">
+    <div class="panel-header">
+      <div class="panel-title">
+        <span>Active & Historical Orders for Selected Trader</span>
+      </div>
+      <span style="font-size: 0.72rem; color: var(--text-muted);">Auto-refreshed every 2s</span>
+    </div>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Side</th>
+          <th>Symbol</th>
+          <th>Quantity</th>
+          <th>Price</th>
+          <th>Status</th>
+          <th>Placed At</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="orders-body">
+        <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Loading orders...</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Lightweight Charts Library -->
+  <script src="lightweight-charts.standalone.production.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

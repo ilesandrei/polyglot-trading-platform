@@ -8,6 +8,8 @@ import com.trading.repository.OrderRepository;
 import com.trading.repository.PortfolioRepository;
 import com.trading.repository.PositionRepository;
 import com.trading.repository.TradeRepository;
+import com.trading.service.PortfolioService;
+import com.trading.service.MarketDataService;
 import com.trading.service.RiskEngine;
 import com.trading.service.RiskEngine.RiskResult;
 
@@ -53,6 +55,8 @@ public class TradingRestController {
     private final PositionRepository  positionRepository;
     private final TradeRepository     tradeRepository;
     private final RiskEngine          riskEngine;
+    private final PortfolioService    portfolioService;
+    private final com.trading.service.MarketDataService marketDataService;
 
     @GrpcClient("cpp-engine")
     private ExecutionServiceGrpc.ExecutionServiceBlockingStub engineStub;
@@ -218,8 +222,132 @@ public class TradingRestController {
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    //  LIVE MARKET & CRYPTO PAPER TRADING ENDPOINTS
+    // ─────────────────────────────────────────────────────────────────────
+
+    @Operation(summary = "Get asset catalog", description = "Returns popular stocks and Robinhood crypto/memecoins available for paper trading.")
+    @GetMapping("/market/catalog")
+    public ResponseEntity<?> getMarketCatalog() {
+        return ResponseEntity.ok(marketDataService.getCatalog());
+    }
+
+    @Operation(summary = "Get live market quote", description = "Returns real-time price, 24h change, day high/low for any stock or crypto.")
+    @GetMapping("/market/quote")
+    public ResponseEntity<?> getMarketQuote(@RequestParam String symbol) {
+        return ResponseEntity.ok(marketDataService.getQuote(symbol));
+    }
+
+    @Operation(summary = "Get historical OHLCV candles", description = "Returns historical candlestick data for charts across ranges (1d, 5d, 1mo, 1y) and intervals (5m, 15m, 1h, 1d).")
+    @GetMapping("/market/history")
+    public ResponseEntity<?> getMarketHistory(
+            @RequestParam String symbol,
+            @RequestParam(defaultValue = "1d") String range,
+            @RequestParam(defaultValue = "5m") String interval) {
+        return ResponseEntity.ok(marketDataService.getCandles(symbol, range, interval));
+    }
+
+    @Operation(summary = "Execute instant paper market order", description = "Instantly buys or sells at the real live market price against the simulator market maker.")
+    @PostMapping("/market/instant-order")
+    public ResponseEntity<?> executeInstantMarketOrder(@RequestBody InstantOrderRequest req) {
+        String symbol = req.symbol().trim().toUpperCase();
+        if (symbol.equals("ETH") || symbol.equals("BTC") || symbol.equals("SOL") || symbol.equals("DOGE") || symbol.equals("SHIB") || symbol.equals("PEPE")) {
+            symbol = symbol + "-USD";
+        }
+
+        var quote = marketDataService.getQuote(symbol);
+        BigDecimal price = BigDecimal.valueOf(quote.price());
+        BigDecimal qty = BigDecimal.valueOf(req.quantity());
+        String side = req.side().trim().toUpperCase();
+
+        // 1. Construct user order
+        Order order = new Order();
+        order.setId(UUID.randomUUID());
+        order.setUserId(req.userId());
+        order.setSymbol(symbol);
+        order.setSide(side);
+        order.setType("MARKET");
+        order.setQuantity(qty);
+        order.setPrice(price);
+        order.setStatus("PENDING");
+        order.setCreatedAt(OffsetDateTime.now());
+        order.setUpdatedAt(OffsetDateTime.now());
+
+        // 2. Pre-trade Risk Validation
+        RiskResult risk = riskEngine.validate(order);
+        if (!risk.approved()) {
+            order.setStatus("REJECTED");
+            orderRepository.save(order);
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new InstantOrderResponse(null, null, symbol, side, qty, price, BigDecimal.ZERO, "REJECTED", risk.reason()));
+        }
+
+        order.setStatus("FILLED");
+        Order savedOrder = orderRepository.save(order);
+
+        // Counter-party order representing market liquidity provider / paper exchange
+        UUID counterUserId = req.userId().equals(UUID.fromString("00000000-0000-0000-0000-000000000001"))
+            ? UUID.fromString("00000000-0000-0000-0000-000000000002")
+            : UUID.fromString("00000000-0000-0000-0000-000000000001");
+        Order counterOrder = new Order();
+        counterOrder.setId(UUID.randomUUID());
+        counterOrder.setUserId(counterUserId);
+        counterOrder.setSymbol(symbol);
+        counterOrder.setSide(side.equals("BUY") ? "SELL" : "BUY");
+        counterOrder.setType("MARKET");
+        counterOrder.setQuantity(qty);
+        counterOrder.setPrice(price);
+        counterOrder.setStatus("FILLED");
+        counterOrder.setCreatedAt(OffsetDateTime.now());
+        counterOrder.setUpdatedAt(OffsetDateTime.now());
+        Order savedCounterOrder = orderRepository.save(counterOrder);
+
+        // 3. Create and persist the executed Trade in DB
+        Trade trade = new Trade();
+        trade.setId(UUID.randomUUID());
+        trade.setSymbol(symbol);
+        trade.setQuantity(qty);
+        trade.setPrice(price);
+        trade.setBuyOrderId(side.equals("BUY") ? savedOrder.getId() : savedCounterOrder.getId());
+        trade.setSellOrderId(side.equals("SELL") ? savedOrder.getId() : savedCounterOrder.getId());
+        trade.setExecutedAt(OffsetDateTime.now());
+        Trade savedTrade = tradeRepository.save(trade);
+
+        // 4. Atomically settle user balances and positions in PostgreSQL
+        portfolioService.applyPaperTrade(savedTrade, req.userId(), side);
+
+        BigDecimal totalCost = qty.multiply(price);
+        String msg = String.format("Instant Paper Fill: %s %.4f %s @ $%.4f (Total: $%.2f)",
+            side, qty.doubleValue(), symbol, price.doubleValue(), totalCost.doubleValue());
+        log.info("[PAPER TRADING] {}", msg);
+
+        return ResponseEntity.ok(new InstantOrderResponse(
+            savedOrder.getId(), savedTrade.getId(), symbol, side, qty, price, totalCost, "FILLED", msg
+        ));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     //  DTOs
     // ─────────────────────────────────────────────────────────────────────
+
+    public record InstantOrderRequest(
+        UUID   userId,
+        String symbol,
+        String side,      // "BUY" or "SELL"
+        double quantity,
+        Double price
+    ) {}
+
+    public record InstantOrderResponse(
+        UUID       orderId,
+        UUID       tradeId,
+        String     symbol,
+        String     side,
+        BigDecimal quantity,
+        BigDecimal price,
+        BigDecimal totalCost,
+        String     status,
+        String     message
+    ) {}
 
     public record OrderRequest(
         UUID   userId,
@@ -242,3 +370,4 @@ public class TradingRestController {
         List<Position> positions
     ) {}
 }
+
